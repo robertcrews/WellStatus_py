@@ -39,7 +39,7 @@ database_name = config.get('MySql', 'DatabaseName')
 # Create the sms client object
 smsClient = Client(account_sid, auth_token)
 smsMessage = smsClient.messages.create(
-    body="Well Status program activated.  Water pressure at 10200 Crumley Ranch Road is being monitored",
+    body="Well Status program activated.  Water pressure is being monitored",
     from_=from_num,
     to=phone_num
     )
