@@ -17,10 +17,11 @@ logger.addHandler(fh)
 logger.info("Program 'WellStatus' started")
 
 # set up the serial port
-# try:
-#    ser = serial.Serial('/dev/ttyACM0', baudrate=9600)
-# except serial.SerialException:
-#    print("Could not connect to serial device: please ensure that Arduino is connected")
+ser = None
+try:
+    ser = serial.Serial('/dev/ttyACM0', baudrate=9600)
+except serial.SerialException:
+    print("Could not connect to serial device: please ensure that Arduino is connected")
 
 # get configs
 config = configparser.ConfigParser()
@@ -190,11 +191,12 @@ except pymysql.Error:
 while True:
     count += 1
     try:
-        ser = serial.Serial('/dev/ttyACM0', baudrate=9600)
         data = ser.readline()
         dataString = data.decode('utf8')
-    except:
+    except serial.SerialException:
         dataString = "x:0:x:0:X:0"
+    except AttributeError:
+        dataString = "x:0:x:0:x:0"
     if dataString:
         log_info(dataString)
         print(dataString)
