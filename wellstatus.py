@@ -37,8 +37,6 @@ database_name = config.get('MySql', 'DatabaseName')
 
 
 # Create the sms client object
-# account_sid = 'ACe5e57f04b39df673d5d8399aea252057'
-# auth_token = '2291a0cb7c592d52dfadedbe48032bb1'
 smsClient = Client(account_sid, auth_token)
 smsMessage = smsClient.messages.create(
     body="Well Status program activated.  Water pressure at 10200 Crumley Ranch Road is being monitored",
