@@ -37,19 +37,20 @@ database_name = config.get('MySql', 'DatabaseName')
 
 
 # Create the sms client object
-smsClient = Client(account_sid, auth_token)
-smsMessage = smsClient.messages.create(
-    body="Well Status program activated.  Water pressure is being monitored",
-    from_=from_num,
-    to=phone_num
-    )
-print(smsMessage.sid)
+# smsClient = Client(account_sid, auth_token)
+# smsMessage = smsClient.messages.create(
+#     body="Well Status program activated.  Water pressure is being monitored",
+#     from_=from_num,
+#     to=phone_num
+#     )
+# print(smsMessage.sid)
 
 rowCount = 0
 count = 59
 tempC = 0
 pressRead = 0
 humidity = 0
+newStart = True
 
 
 # Function to calculate temperature from
@@ -160,7 +161,7 @@ def db_connect():
     try:
         global db
         global cursor
-        db = pymysql.connect("127.0.0.1", "crewsr", "H0rnisc0pe!", "WellDataDev")
+        db = pymysql.connect("127.0.0.1", "xxx", "xxx", "WellDataDev")
         cursor = db.cursor()
         cursor.execute("SELECT VERSION()")
         db_results = cursor.fetchone()
@@ -171,9 +172,21 @@ def db_connect():
         print("Database reconnection failed, will retry in 5 seconds")
 
 
+def send_sms(sms_msg):
+    sms_client = Client(account_sid, auth_token)
+    sms_message = sms_client.messages.create(
+        body=sms_msg,
+        from_=from_num,
+        to=phone_num
+    )
+    print(sms_message.sid)
+
+
+# send a quick sms to show that the system is working
+# send_sms("Well Status program activated.  Water pressure is being monitored.")
 # Connect to the database
 try:
-    db = pymysql.connect("127.0.0.1", "crewsr", "H0rnisc0pe!", "WellDataDev")
+    db = pymysql.connect("127.0.0.1", "xxx", "xxx", "WellDataDev")
     cursor = db.cursor()
     cursor.execute("SELECT VERSION()")
     results = cursor.fetchone()
@@ -234,6 +247,11 @@ while True:
     add_new_pressure_record(pressure)
 
 # add a new record to the database every 30th read
+
+    if newStart:
+        msg = "Well status program activated, water pressure is being monitored.  Initial pressure:"+str(pressure)+"."
+        send_sms(msg)
+        newStart = False
 
     if count % 60 == 0:
         add_new_data_record(temperature, pressure, humidity)
