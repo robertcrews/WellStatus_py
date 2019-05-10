@@ -161,7 +161,7 @@ def db_connect():
     try:
         global db
         global cursor
-        db = pymysql.connect("127.0.0.1", "xxx", "xxx", "WellDataDev")
+        db = pymysql.connect(ip_address, user_name, password, database_name)
         cursor = db.cursor()
         cursor.execute("SELECT VERSION()")
         db_results = cursor.fetchone()
@@ -186,7 +186,7 @@ def send_sms(sms_msg):
 # send_sms("Well Status program activated.  Water pressure is being monitored.")
 # Connect to the database
 try:
-    db = pymysql.connect("127.0.0.1", "xxx", "xxx", "WellDataDev")
+    db = pymysql.connect(ip_address, user_name, password, database_name)
     cursor = db.cursor()
     cursor.execute("SELECT VERSION()")
     results = cursor.fetchone()
