@@ -3,7 +3,7 @@ import pymysql
 import sys
 import serial
 import logging
-import math
+import numpy
 import configparser
 from twilio.rest import Client
 
@@ -34,16 +34,6 @@ user_name = config.get('MySql', 'UserName')
 password = config.get('MySql', 'Password')
 ip_address = config.get('MySql', 'IpAddress')
 database_name = config.get('MySql', 'DatabaseName')
-
-
-# Create the sms client object
-# smsClient = Client(account_sid, auth_token)
-# smsMessage = smsClient.messages.create(
-#     body="Well Status program activated.  Water pressure is being monitored",
-#     from_=from_num,
-#     to=phone_num
-#     )
-# print(smsMessage.sid)
 
 rowCount = 0
 count = 59
@@ -109,7 +99,6 @@ def count_rows(tbl_name):
     except pymysql.Error:
         num_rows = 0
         logger.error('unable to count records from table ' + tbl_name)
-        log_error('unable to count records from the table ' + tbl_name)
     return num_rows
 
 
@@ -119,9 +108,13 @@ def prune_database(tbl_name, max_records):
     rows_to_remove = number_of_rows - max_records
     record = [rows_to_remove]
     if rows_to_remove > 0:
-        query = """DELETE FROM %s ORDER BY idx LIMIT %%s"""
-        query = query % tbl_name
-        cursor.execute(query, record)
+        try:
+            query = """DELETE FROM %s ORDER BY idx LIMIT %%s"""
+            query = query % tbl_name
+            cursor.execute(query, record)
+        except pymysql.Error:
+            logger.error("Could not prune database")
+            db_connect()
     else:
         log_info("Max records not reached in table " + tbl_name + ": no records removed")
 
@@ -135,9 +128,8 @@ def add_new_data_record(temp, press, hum):
         cursor.execute("""INSERT INTO data (cels,readdatetime,bar,humidity) VALUES (%s,%s,%s,%s)""", record)
         db.commit()
         log_info('Adding new data record')
-
     except pymysql.Error:
-        log_error("Error occurred while adding new data record")
+        logger.error("Error occurred while adding new data record")
         db_connect()
 
 
@@ -150,13 +142,12 @@ def add_new_pressure_record(press):
         cursor.execute("""INSERT INTO pressure (datetime,psi) VALUES (%s,%s)""", record)
         db.commit()
         log_info('Adding new pressure record')
-
     except pymysql.Error:
-        log_error("Error occurred while adding new pressure record")
+        logger.error("Error occurred while adding new pressure record")
         db_connect()
 
 
-# Attempt to re-connect to the database
+# Attempt to connect/re-connect to the database
 def db_connect():
     try:
         global db
@@ -170,6 +161,8 @@ def db_connect():
     except pymysql.Error:
         logger.error("Database reconnection failed, will retry in 5 seconds")
         print("Database reconnection failed, will retry in 5 seconds")
+        time.sleep(5)
+        db_connect()
 
 
 def send_sms(sms_msg):
@@ -182,81 +175,131 @@ def send_sms(sms_msg):
     print(sms_message.sid)
 
 
+# function to read and return raw pressure values to main
+def get_pressure_data():
+    temp_reading = 0
+    pressure_reading = 0
+    humidity_reading = 0
+    try:
+        data = ser.readline()
+        data_string = data.decode('utf8')
+    except serial.SerialException:
+        data_string = "x:0:x:0:X:0"
+    except AttributeError:
+        data_string = "x:0:x:0:x:0"
+    if data_string:
+        log_info(data_string)
+        print(data_string)
+        data_array = data_string.split(":")
+        try:
+            tmp_val = float(data_array[3])
+            if numpy.isnan(tmp_val):
+                log_error("Invalid temp argument, extracted value is NaN")
+                print("Invalid temp argument")
+            else:
+                temp_reading = tmp_val
+            tmp_val = float(data_array[1])
+            if numpy.isnan(tmp_val):
+                log_error("Invalid pressure argument, extracted value is Nan")
+                print("Invalid pressure argument")
+            else:
+                pressure_reading = tmp_val
+            tmp_val = float(data_array[5])
+            if numpy.isnan(tmp_val):
+                log_error("Invalid humidity argument, extracted value is Nan")
+                print("Invalid humidity argument")
+            else:
+                humidity_reading = tmp_val
+        except numpy:
+            log_error("Bad data from arduino")
+            print("Bad data from arduino")
+        reading_data = [temp_reading, pressure_reading, humidity_reading]
+        return reading_data
+
+
 # send a quick sms to show that the system is working
 # send_sms("Well Status program activated.  Water pressure is being monitored.")
 # Connect to the database
-try:
-    db = pymysql.connect(ip_address, user_name, password, database_name)
-    cursor = db.cursor()
-    cursor.execute("SELECT VERSION()")
-    results = cursor.fetchone()
-    log_info("Program started")
-    log_info(str(results))
-except pymysql.Error:
-    logger.error('Initial database connection failure on startup, exiting...')
-    print("Initial database connection failure on startup, program exited...")
-    sys.exit()
-
+# try:
+# db = pymysql.connect(ip_address, user_name, password, database_name)
+# cursor = db.cursor()
+# cursor.execute("SELECT VERSION()")
+# results = cursor.fetchone()
+# log_info("Program started")
+# log_info(str(results))
+# except pymysql.Error:
+# logger.error('Initial database connection failure on startup, exiting...')
+# print("Initial database connection failure on startup, program exited...")
+# sys.exit()
+db_connect()
+reading = get_pressure_data()
+pressure = convert_press(reading[1], 2)
+send_sms("Water pressure monitoring at 10200 started.  Current pressure:" + str(pressure))
 
 # Main loop.
 while True:
     count += 1
-    try:
-        data = ser.readline()
-        dataString = data.decode('utf8')
-    except serial.SerialException:
-        dataString = "x:0:x:0:X:0"
-    except AttributeError:
-        dataString = "x:0:x:0:x:0"
-    if dataString:
-        log_info(dataString)
-        print(dataString)
-        dataArray = dataString.split(":")
-        try:
-            tmpVal = float(dataArray[3])
-            if math.isnan(tmpVal):
-                log_error("Invalid temp argument, extracted value is NaN")
-                print("Invalid temp argument")
-            else:
-                tempC = tmpVal
-            tmpVal = float(dataArray[1])
-            if math.isnan(tmpVal):
-                log_error("Invalid pressure argument, extracted value is Nan")
-                print("Invalid pressure argument")
-            else:
-                pressRead = tmpVal
-            tmpVal = float(dataArray[5])
-            if math.isnan(tmpVal):
-                log_error("Invalid humidity argument, extracted value is Nan")
-                print("Invalid humidity argument")
-            else:
-                humidity = tmpVal
-        except math:
-            log_error("Bad data from arduino")
-            print("Bad data from arduino")
+    # try:
+    # data = ser.readline()
+    # dataString = data.decode('utf8')
+    # except serial.SerialException:
+    # dataString = "x:0:x:0:X:0"
+    # except AttributeError:
+    # dataString = "x:0:x:0:x:0"
+    # if dataString:
+    # log_info(dataString)
+    # print(dataString)
+    # dataArray = dataString.split(":")
+    # try:
+    # tmpVal = float(dataArray[3])
+    # if math.isnan(tmpVal):
+    # log_error("Invalid temp argument, extracted value is NaN")
+    # print("Invalid temp argument")
+    # else:
+    # tempC = tmpVal
+    # tmpVal = float(dataArray[1])
+    # if math.isnan(tmpVal):
+    # log_error("Invalid pressure argument, extracted value is Nan")
+    # print("Invalid pressure argument")
+    # else:
+    # pressRead = tmpVal
+    # tmpVal = float(dataArray[5])
+    # if math.isnan(tmpVal):
+    # log_error("Invalid humidity argument, extracted value is Nan")
+    # print("Invalid humidity argument")
+    # else:
+    # humidity = tmpVal
+    # except math:
+    # log_error("Bad data from arduino")
+    # print("Bad data from arduino")
 
-# convert the celcius temp value into a temperature fahrenheit
-    temperature = convert_temp(tempC, 2)
-    pressure = convert_press(pressRead, 2)
-    print("Temperature: "+str(temperature)+" - Pressure: "+str(pressure)+" - Humidity: "+str(humidity))
+    # convert the celcius temp value into a temperature fahrenheit
+    reading = get_pressure_data()
+    # temperature = convert_temp(tempC, 2)
+    temperature = convert_temp(reading[0], 2)
+    # pressure = convert_press(pressRead, 2)
+    pressure = convert_press(reading[1], 2)
+    humidity = reading[2]
+    print("Temperature: " + str(temperature) + " - Pressure: " + str(pressure) + " - Humidity: " + str(humidity))
 
-# prune the message table down to 100(000) table if necessary to keep it from growing too big
+    # prune the message table down to 100(000) table if necessary to keep it from growing too big
     prune_database('messages', 4999)
 
-# add a new record to the pressure table
+    # add a new record to the pressure table
     add_new_pressure_record(pressure)
 
-# add a new record to the database every 30th read
+    # add a new record to the database every 30th read
 
-    if newStart:
-        msg = "Well status program activated, water pressure is being monitored.  Initial pressure:"+str(pressure)+"."
-        send_sms(msg)
-        newStart = False
+    # if newStart:
+    # msg = "Well status program activated, water pressure is being monitored.  Initial pressure:" + str(
+    # pressure) + "."
+    # send_sms(msg)
+    # newStart = False
 
     if count % 60 == 0:
         add_new_data_record(temperature, pressure, humidity)
         count = 0
-# monitor the keyboard during the delay to break on ctrl-c
+    # monitor the keyboard during the delay to break on ctrl-c
     try:
         time.sleep(5)
 
